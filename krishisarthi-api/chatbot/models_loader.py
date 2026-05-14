@@ -27,9 +27,16 @@ load_dotenv()
 logger = get_logger(__name__)
 
 # ── Paths (configurable via env vars) ─────────────────────────────────────────
-MODEL_DIR = os.getenv("MODEL_DIR_ABS", "Encoder_and_model")
+# On Render, hardcoded local paths like /Users/... will crash. We fallback to relative.
+MODEL_DIR = os.getenv("MODEL_DIR", "Encoder_and_model")
 if not os.path.isabs(MODEL_DIR):
+    # Try relative to the project root (where main.py typically runs)
     MODEL_DIR = os.path.join(os.getcwd(), MODEL_DIR)
+
+# Fallback: if it still doesn't exist, calculate relative to this script
+if not os.path.exists(MODEL_DIR):
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    MODEL_DIR = os.path.join(base_dir, "Encoder_and_model")
 
 _XGB_KHARIF_PATH  = os.path.join(MODEL_DIR, "krishi_kharif_xgb_final.pkl")
 _XGB_RABI_PATH    = os.path.join(MODEL_DIR, "krishi_rabi_xgb_final.pkl")
