@@ -1,4 +1,4 @@
-name: Deploy Backend to Oracle Cloud
+name: Backend CI/CD Pipeline
 
 on:
   push:
@@ -7,11 +7,54 @@ on:
     paths:
       - 'krishisarthi-api/**'
       - '.github/workflows/deploy-backend.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'krishisarthi-api/**'
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: Deploy FastAPI to Oracle VM
+  # ─────────────────────────────────────────────────────────────
+  # Block 1: Automated Testing & API Route Verification
+  # ─────────────────────────────────────────────────────────────
+  test-api:
+    name: 🧪 Test Routes & API Endpoints
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        working-directory: krishisarthi-api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest httpx
+
+      - name: Run Pytest Route Verification Suite
+        working-directory: krishisarthi-api
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || 'dummy-client-id.apps.googleusercontent.com' }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || 'dummy-client-secret' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy' }}
+        run: |
+          PYTHONPATH=. pytest tests -v
+
+  # ─────────────────────────────────────────────────────────────
+  # Block 2: Automatic Deployment to Oracle Cloud (Runs only if tests pass)
+  # ─────────────────────────────────────────────────────────────
+  deploy-oracle:
+    name: 🚀 Deploy to Oracle Cloud VM
+    needs: [test-api]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -28,16 +71,20 @@ jobs:
             set -e
             export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 
-            echo "🚀 Pulling latest changes from GitHub..."
+            echo "🚀 1/4 Pulling latest changes from GitHub..."
             cd /home/priyanshu/Krishi-Sarthii
             git pull origin main
 
-            echo "📦 Updating dependencies via uv..."
+            echo "📦 2/4 Updating dependencies via uv..."
             cd /home/priyanshu/Krishi-Sarthii/krishisarthi-api
             uv pip install -r requirements.txt --python .venv/bin/python
 
-            echo "🔄 Restarting KishanSaathi backend service..."
+            echo "🔄 3/4 Restarting KishanSaathi backend service..."
             systemctl --user daemon-reload
             systemctl --user restart krishisarthi
             systemctl --user status krishisarthi --no-pager
-            echo "✅ Deployment completed successfully!"
+
+            echo "🔍 4/4 Performing live smoke healthcheck..."
+            sleep 2
+            curl -s -f https://kapi.priyanshu.cv/docs > /dev/null
+            echo "✅ Deployment completed and live endpoint verified successfully!"
