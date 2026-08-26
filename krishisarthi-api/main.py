@@ -18,6 +18,9 @@ import sys
 import base64
 import json
 import secrets
+import hmac
+import hashlib
+import time
 from urllib.parse import urlencode
 
 # ── Fix Windows asyncio loop policy for asyncpg SSL ────────────────────────────
@@ -220,6 +223,35 @@ def _build_google_redirect_uri(request: Request) -> str:
     return f"{base_url}/auth/google/callback"
 
 
+def _generate_oauth_state() -> str:
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_urlsafe(16)
+    payload = f"{nonce}.{timestamp}"
+    secret = (GOOGLE_CLIENT_SECRET or "krishisarthi_oauth_secret_fallback").encode("utf-8")
+    sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()[:24]
+    return f"{payload}.{sig}"
+
+
+def _verify_oauth_state(state: Optional[str]) -> bool:
+    if not state:
+        return False
+    parts = state.split(".")
+    if len(parts) != 3:
+        return False
+    nonce, timestamp_str, sig = parts
+    try:
+        ts = int(timestamp_str)
+        # 15-minute validity window
+        if abs(time.time() - ts) > 900:
+            return False
+    except ValueError:
+        return False
+    secret = (GOOGLE_CLIENT_SECRET or "krishisarthi_oauth_secret_fallback").encode("utf-8")
+    expected_payload = f"{nonce}.{timestamp_str}".encode("utf-8")
+    expected_sig = hmac.new(secret, expected_payload, hashlib.sha256).hexdigest()[:24]
+    return hmac.compare_digest(sig, expected_sig)
+
+
 def _encode_user_payload(payload: dict) -> str:
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     encoded = base64.urlsafe_b64encode(raw).decode("utf-8")
@@ -414,7 +446,7 @@ async def google_login(request: Request):
         raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server.")
 
     redirect_uri = _build_google_redirect_uri(request)
-    state = secrets.token_urlsafe(24)
+    state = _generate_oauth_state()
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": redirect_uri,
@@ -428,13 +460,14 @@ async def google_login(request: Request):
 
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"
     response = RedirectResponse(auth_url, status_code=302)
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         "oauth_state",
         state,
         httponly=True,
-        secure=False,
+        secure=is_secure,
         samesite="lax",
-        max_age=10 * 60,
+        max_age=15 * 60,
     )
     return response
 
@@ -448,7 +481,9 @@ async def google_callback(
 ):
     """Handles Google OAuth callback, verifies ID token, and redirects to frontend."""
     stored_state = request.cookies.get("oauth_state")
-    if not stored_state or not state or stored_state != state:
+    is_state_valid = _verify_oauth_state(state) or (stored_state and state and stored_state == state)
+    if not is_state_valid:
+        logger.warning("oauth_state_mismatch", extra={"state": state, "stored_state": stored_state})
         raise HTTPException(status_code=400, detail="OAuth state mismatch. Please try again.")
 
     if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:

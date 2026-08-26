@@ -51,7 +51,7 @@ If farmer asks "agar X ki jagah Y ugaau" or "X vs Y" or "Y try karun to kya hoga
 """
 
 llm_model = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model=os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
     temperature=0,
     api_key=os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY")
 ).bind_tools(
