@@ -45,6 +45,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID || 'dummy-client-id.apps.googleusercontent.com' }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET || 'dummy-client-secret' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || 'postgresql://dummy:dummy@localhost:5432/dummy' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || 'gsk_dummy_key_for_testing' }}
         run: |
           PYTHONPATH=. pytest tests -v
 
