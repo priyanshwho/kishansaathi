@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Mic, MicOff, Send } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { streamChat } from '../../../services/apiClient'
 import { getLocalizedApiError } from '../../../services/apiErrors'
 import { useLanguage } from '../../../context/LanguageContext'
@@ -175,7 +177,19 @@ const AiAssistantPanel = () => {
           <div key={`${msg.role}-${index}`} className={`panel-chat-fullscreen__bubble panel-chat-fullscreen__bubble--${msg.role}`}>
             <span className="panel-chat-fullscreen__role">{msg.role === 'user' ? t.you : t.kisanSaathi}</span>
             <div className="panel-chat-fullscreen__text">
-              {msg.content || (msg.role === 'bot' && streaming ? '●●●' : '')}
+              {msg.role === 'bot' ? (
+                msg.content ? (
+                  <div className="panel-chat-fullscreen__markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : streaming ? (
+                  <span className="panel-chat-fullscreen__typing">●●●</span>
+                ) : null
+              ) : (
+                msg.content
+              )}
             </div>
           </div>
         ))}

@@ -2814,7 +2814,120 @@ html.language-large-text .footer__copy {
 }
 
 .panel-chat-fullscreen__text {
+	white-space: normal;
+	word-break: break-word;
+}
+
+.panel-chat-fullscreen__bubble--user .panel-chat-fullscreen__text {
 	white-space: pre-wrap;
+}
+
+.panel-chat-fullscreen__markdown {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	font-size: 0.88rem;
+	line-height: 1.6;
+}
+
+.panel-chat-fullscreen__markdown p {
+	margin: 0;
+}
+
+.panel-chat-fullscreen__markdown strong,
+.panel-chat-fullscreen__markdown b {
+	font-weight: 600;
+	color: #0f172a;
+}
+
+.panel-chat-fullscreen__markdown ul,
+.panel-chat-fullscreen__markdown ol {
+	margin: 0.2rem 0;
+	padding-left: 1.25rem;
+}
+
+.panel-chat-fullscreen__markdown li {
+	margin-bottom: 0.3rem;
+}
+
+.panel-chat-fullscreen__markdown li:last-child {
+	margin-bottom: 0;
+}
+
+.panel-chat-fullscreen__markdown h1,
+.panel-chat-fullscreen__markdown h2,
+.panel-chat-fullscreen__markdown h3,
+.panel-chat-fullscreen__markdown h4 {
+	font-weight: 600;
+	margin: 0.4rem 0 0.2rem 0;
+	color: #0f172a;
+}
+
+.panel-chat-fullscreen__markdown h1 { font-size: 1.15rem; }
+.panel-chat-fullscreen__markdown h2 { font-size: 1.05rem; }
+.panel-chat-fullscreen__markdown h3 { font-size: 0.95rem; }
+
+.panel-chat-fullscreen__markdown code {
+	background: rgba(15, 23, 42, 0.06);
+	padding: 0.12rem 0.35rem;
+	border-radius: 4px;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+	font-size: 0.85em;
+}
+
+.panel-chat-fullscreen__markdown pre {
+	background: #0f172a;
+	color: #f8fafc;
+	padding: 0.65rem 0.85rem;
+	border-radius: 0.5rem;
+	overflow-x: auto;
+	font-size: 0.82rem;
+	margin: 0.4rem 0;
+}
+
+.panel-chat-fullscreen__markdown pre code {
+	background: transparent;
+	padding: 0;
+	color: inherit;
+}
+
+.panel-chat-fullscreen__markdown blockquote {
+	border-left: 3px solid #10b981;
+	padding-left: 0.65rem;
+	margin: 0.4rem 0;
+	color: #4b5563;
+	font-style: italic;
+}
+
+.panel-chat-fullscreen__markdown table {
+	width: 100%;
+	border-collapse: collapse;
+	margin: 0.4rem 0;
+	font-size: 0.84rem;
+}
+
+.panel-chat-fullscreen__markdown th,
+.panel-chat-fullscreen__markdown td {
+	border: 1px solid #e2e8f0;
+	padding: 0.35rem 0.55rem;
+	text-align: left;
+}
+
+.panel-chat-fullscreen__markdown th {
+	background: #f1f5f9;
+	font-weight: 600;
+}
+
+.panel-chat-fullscreen__typing {
+	display: inline-block;
+	letter-spacing: 0.2em;
+	color: #10b981;
+	animation: pulse-typing 1.4s infinite ease-in-out;
+}
+
+@keyframes pulse-typing {
+	0%, 100% { opacity: 0.3; }
+	50% { opacity: 1; }
 }
 
 .panel-chat-fullscreen__input-bar {
