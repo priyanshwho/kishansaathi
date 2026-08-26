@@ -49,8 +49,10 @@ def _row_to_message(row: asyncpg.Record) -> Optional[BaseMessage]:
     if role == "ai":
         return AIMessage(content=content)
     if role == "tool":
-        # tool_name is stored but ToolMessage needs a tool_call_id; use a placeholder
-        return ToolMessage(content=content, tool_call_id="db_restored")
+        # Intermediate tool outputs from prior completed turns do not need to be
+        # replayed into active LLM context. Orphan ToolMessages without preceding
+        # AIMessage(tool_calls) violate the OpenAI/Groq chat completion schema.
+        return None
     if role == "summary":
         return SystemMessage(content=f"[Previous conversation summary]\n{content}")
     return None

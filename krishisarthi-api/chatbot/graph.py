@@ -147,7 +147,7 @@ async def call_tool(state: AgentState, config: RunnableConfig) -> dict:
         elif name == "get_weather":       res = await get_weather.ainvoke(args, config=conf)
         elif name == "get_crop_advice":   res = await get_crop_advice.ainvoke(args, config=conf)
         else:                             res = f"❌ Unknown tool: {name}"
-        results.append(ToolMessage(tool_call_id=tc["id"], content=str(res)))
+        results.append(ToolMessage(tool_call_id=tc["id"], content=str(res), name=name))
     return {"messages": results}
 
 
