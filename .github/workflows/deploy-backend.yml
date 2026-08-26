@@ -26,14 +26,15 @@ jobs:
           key: ${{ secrets.ORACLE_SSH_KEY }}
           script: |
             set -e
+            export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+
             echo "🚀 Pulling latest changes from GitHub..."
             cd /home/priyanshu/Krishi-Sarthii
             git pull origin main
 
-            echo "📦 Updating dependencies..."
+            echo "📦 Updating dependencies via uv..."
             cd /home/priyanshu/Krishi-Sarthii/krishisarthi-api
-            source .venv/bin/activate
-            pip install -r requirements.txt
+            uv pip install -r requirements.txt --python .venv/bin/python
 
             echo "🔄 Restarting KishanSaathi backend service..."
             systemctl --user daemon-reload
