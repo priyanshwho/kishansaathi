@@ -2930,6 +2930,78 @@ html.language-large-text .footer__copy {
 	50% { opacity: 1; }
 }
 
+.panel-chat-fullscreen__tools-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	margin-bottom: 0.5rem;
+}
+
+.panel-chat-fullscreen__tool-card {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 0.5rem;
+	overflow: hidden;
+	font-size: 0.8rem;
+}
+
+.panel-chat-fullscreen__tool-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	padding: 0.35rem 0.6rem;
+	background: #f1f5f9;
+	border: none;
+	cursor: pointer;
+	color: #475569;
+	font-size: 0.78rem;
+	font-weight: 500;
+	transition: background 0.15s;
+}
+
+.panel-chat-fullscreen__tool-header:hover {
+	background: #e2e8f0;
+}
+
+.panel-chat-fullscreen__tool-badge {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+}
+
+.panel-chat-fullscreen__tool-body {
+	padding: 0.5rem 0.65rem;
+	border-top: 1px solid #e2e8f0;
+	background: #ffffff;
+}
+
+.panel-chat-fullscreen__tool-body pre {
+	margin: 0;
+	font-size: 0.75rem;
+	line-height: 1.45;
+	color: #334155;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: transparent;
+	padding: 0;
+}
+
+.panel-chat-fullscreen__tool-running {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4rem;
+	padding: 0.3rem 0.6rem;
+	background: #eff6ff;
+	border: 1px solid #bfdbfe;
+	color: #1e40af;
+	border-radius: 0.4rem;
+	font-size: 0.78rem;
+	font-weight: 500;
+	margin-bottom: 0.4rem;
+	animation: pulse-typing 1.4s infinite ease-in-out;
+}
+
 .panel-chat-fullscreen__input-bar {
 	display: flex;
 	gap: 0.5rem;

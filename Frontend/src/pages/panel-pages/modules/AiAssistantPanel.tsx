@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { Mic, MicOff, Send } from 'lucide-react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { Mic, MicOff, Send, ChevronDown, ChevronRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { streamChat } from '../../../services/apiClient'
@@ -12,6 +12,122 @@ type ChatMessage = {
   role: 'user' | 'bot'
   content: string
   timestamp?: string
+}
+
+type ParsedTool = {
+  name: string
+  content: string
+}
+
+const TOOL_META: Record<string, { label: string; icon: string }> = {
+  get_weather: { label: 'Weather Forecast', icon: '🌤️' },
+  list_mandis: { label: 'APMC Mandis List', icon: '📍' },
+  fetch_crop_price: { label: 'Live Mandi Price', icon: '💰' },
+  get_crop_advice: { label: 'Crop & Soil Advice', icon: '🌾' },
+}
+
+function parseMessageContent(raw: string): { tools: ParsedTool[]; text: string; runningTool?: string } {
+  if (!raw) return { tools: [], text: '' }
+
+  const tools: ParsedTool[] = []
+  // Matches \x00TOOL:tool_name\x00content\x00/TOOL\x00 or unicode replacements like TOOL:.../TOOL
+  const toolRegex = /[\x00\uFFFD]?TOOL:([a-zA-Z0-9_]+)[\x00\uFFFD]?([\s\S]*?)[\x00\uFFFD]?\/TOOL[\x00\uFFFD]?/g
+
+  let match: RegExpExecArray | null
+  while ((match = toolRegex.exec(raw)) !== null) {
+    tools.push({
+      name: match[1],
+      content: match[2].trim(),
+    })
+  }
+
+  let text = raw.replace(toolRegex, '').trim()
+
+  // Check if there is an in-progress tool block currently streaming
+  let runningTool: string | undefined
+  const inProgress = /[\x00\uFFFD]?TOOL:([a-zA-Z0-9_]+)[\x00\uFFFD]?([\s\S]*)$/.exec(text)
+  if (inProgress) {
+    runningTool = inProgress[1]
+    text = text.replace(/[\x00\uFFFD]?TOOL:([a-zA-Z0-9_]+)[\x00\uFFFD]?([\s\S]*)$/, '').trim()
+  }
+
+  // Strip stray control characters
+  text = text.replace(/[\x00\uFFFD]/g, '').trim()
+
+  return { tools, text, runningTool }
+}
+
+const ToolCard = ({ tool }: { tool: ParsedTool }) => {
+  const [open, setOpen] = useState(false)
+  const meta = TOOL_META[tool.name] || { label: tool.name.replace(/_/g, ' '), icon: '⚡' }
+
+  return (
+    <div className="panel-chat-fullscreen__tool-card">
+      <button
+        type="button"
+        className="panel-chat-fullscreen__tool-header"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="panel-chat-fullscreen__tool-badge">
+          <span>{meta.icon}</span>
+          <span>{meta.label}</span>
+        </span>
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+      </button>
+      {open && (
+        <div className="panel-chat-fullscreen__tool-body">
+          <pre>{tool.content}</pre>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const BotBubble = ({
+  rawContent,
+  streaming,
+  kisanSaathiLabel,
+}: {
+  rawContent: string
+  streaming: boolean
+  kisanSaathiLabel: string
+}) => {
+  const { tools, text, runningTool } = useMemo(
+    () => parseMessageContent(rawContent),
+    [rawContent],
+  )
+
+  return (
+    <div className="panel-chat-fullscreen__bubble panel-chat-fullscreen__bubble--bot">
+      <span className="panel-chat-fullscreen__role">{kisanSaathiLabel}</span>
+      <div className="panel-chat-fullscreen__text">
+        {tools.length > 0 && (
+          <div className="panel-chat-fullscreen__tools-list">
+            {tools.map((t, idx) => (
+              <ToolCard key={`${t.name}-${idx}`} tool={t} />
+            ))}
+          </div>
+        )}
+
+        {runningTool && (
+          <div className="panel-chat-fullscreen__tool-running">
+            <span>{TOOL_META[runningTool]?.icon || '⚡'}</span>
+            <span>Fetching {TOOL_META[runningTool]?.label || runningTool}...</span>
+          </div>
+        )}
+
+        {text ? (
+          <div className="panel-chat-fullscreen__markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {text}
+            </ReactMarkdown>
+          </div>
+        ) : streaming && !runningTool && tools.length === 0 ? (
+          <span className="panel-chat-fullscreen__typing">●●●</span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 // ── Web Speech API types ──────────────────────────────────────────────────────
@@ -173,26 +289,24 @@ const AiAssistantPanel = () => {
           </div>
         ) : null}
 
-        {messages.map((msg, index) => (
-          <div key={`${msg.role}-${index}`} className={`panel-chat-fullscreen__bubble panel-chat-fullscreen__bubble--${msg.role}`}>
-            <span className="panel-chat-fullscreen__role">{msg.role === 'user' ? t.you : t.kisanSaathi}</span>
-            <div className="panel-chat-fullscreen__text">
-              {msg.role === 'bot' ? (
-                msg.content ? (
-                  <div className="panel-chat-fullscreen__markdown">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  </div>
-                ) : streaming ? (
-                  <span className="panel-chat-fullscreen__typing">●●●</span>
-                ) : null
-              ) : (
-                msg.content
-              )}
+        {messages.map((msg, index) =>
+          msg.role === 'bot' ? (
+            <BotBubble
+              key={`bot-${index}`}
+              rawContent={msg.content}
+              streaming={streaming && index === messages.length - 1}
+              kisanSaathiLabel={t.kisanSaathi}
+            />
+          ) : (
+            <div
+              key={`user-${index}`}
+              className="panel-chat-fullscreen__bubble panel-chat-fullscreen__bubble--user"
+            >
+              <span className="panel-chat-fullscreen__role">{t.you}</span>
+              <div className="panel-chat-fullscreen__text">{msg.content}</div>
             </div>
-          </div>
-        ))}
+          ),
+        )}
         <div ref={messagesEndRef} />
       </div>
 
