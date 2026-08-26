@@ -1,0 +1,42 @@
+name: Deploy Backend to Oracle Cloud
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'krishisarthi-api/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy FastAPI to Oracle VM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ORACLE_HOST }}
+          username: ${{ secrets.ORACLE_USERNAME }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -e
+            echo "🚀 Pulling latest changes from GitHub..."
+            cd /home/priyanshu/Krishi-Sarthii
+            git pull origin main
+
+            echo "📦 Updating dependencies..."
+            cd /home/priyanshu/Krishi-Sarthii/krishisarthi-api
+            source .venv/bin/activate
+            pip install -r requirements.txt
+
+            echo "🔄 Restarting KishanSaathi backend service..."
+            systemctl --user daemon-reload
+            systemctl --user restart krishisarthi
+            systemctl --user status krishisarthi --no-pager
+            echo "✅ Deployment completed successfully!"
