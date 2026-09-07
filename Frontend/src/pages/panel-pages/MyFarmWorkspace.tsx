@@ -9,6 +9,7 @@ import { apiClient } from '../../services/apiClient'
 import { getLocalizedApiError } from '../../services/apiErrors'
 import { useLanguage } from '../../context/LanguageContext'
 import { useSession } from '../../context/SessionContext'
+import { useFields } from '../../context/FieldContext'
 import { useToast } from '../../context/ToastContext'
 import type { AgroSnapshotResponse, DistrictItem } from '../../types/api'
 
@@ -100,6 +101,7 @@ const MyFarmWorkspace = ({ item }: { item: PanelItem }) => {
   const p = panel.panel.myFarm
   const { pushToast } = useToast()
   const { farmerId, fieldId: storedFieldId, farmerProfile, setFarmerId, setFieldId: storeFieldId } = useSession()
+  const { refreshFields } = useFields()
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const drawRef = useRef<MapboxDraw | null>(null)
@@ -371,6 +373,7 @@ const MyFarmWorkspace = ({ item }: { item: PanelItem }) => {
         setSaveStatus('saved')
         setSaveMessage(`Boundary saved. Field ${payload.field_id}, Polygon ${payload.polygon_id}.`)
 
+        await refreshFields()
         await fetchAgroSnapshot(payload.field_id, payload.polygon_id)
       } catch (error) {
         const message = getLocalizedApiError(error, content)
@@ -379,7 +382,7 @@ const MyFarmWorkspace = ({ item }: { item: PanelItem }) => {
         pushToast(message, 'error')
       }
     },
-    [areaHectares, content, farmerId, fieldName, fetchAgroSnapshot, pushToast, storeFieldId],
+    [areaHectares, content, farmerId, fieldName, fetchAgroSnapshot, pushToast, storeFieldId, refreshFields],
   )
 
   const syncFromDraw = useCallback(() => {

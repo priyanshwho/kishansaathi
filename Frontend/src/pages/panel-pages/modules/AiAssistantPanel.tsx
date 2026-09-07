@@ -274,6 +274,12 @@ const AiAssistantPanel = () => {
 
   return (
     <div className="panel-chat-fullscreen">
+      {selectedField && (
+        <div className="panel-chat-fullscreen__field-banner">
+          <span className="panel-chat-fullscreen__field-dot" />
+          <span>Active Context: <strong>{selectedField.field_name}</strong> {selectedField.city_name ? `— ${selectedField.city_name}` : ''}</span>
+        </div>
+      )}
       <div className="panel-chat-fullscreen__messages">
         {historyLoading ? (
           <p className="panel-empty">{t.loadingHistory}</p>
