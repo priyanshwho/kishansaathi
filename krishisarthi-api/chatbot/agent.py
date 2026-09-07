@@ -17,6 +17,7 @@ async def run_agent(
     farmer_id: str,
     message: str,
     thread_id: str | None = None,
+    field_id: str | None = None,
 ) -> str:
     if thread_id is None:
         thread_id = f"thread-{farmer_id}"
@@ -30,7 +31,8 @@ async def run_agent(
     
     initial_state = {
         "messages": messages,
-        "farmer_id": farmer_id
+        "farmer_id": farmer_id,
+        "field_id": field_id or "",
     }
 
     try:
@@ -71,6 +73,7 @@ async def run_agent_streaming(
     farmer_id: str,
     message: str,
     thread_id: str | None = None,
+    field_id: str | None = None,
 ) -> AsyncIterator[str]:
     if thread_id is None:
         thread_id = f"thread-{farmer_id}"
@@ -84,7 +87,8 @@ async def run_agent_streaming(
 
     initial_state = {
         "messages": messages,
-        "farmer_id": farmer_id
+        "farmer_id": farmer_id,
+        "field_id": field_id or "",
     }
 
     try:

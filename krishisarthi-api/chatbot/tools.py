@@ -141,17 +141,33 @@ def _predict_yield(inputs: dict) -> float:
 async def list_mandis(crop: str, config: RunnableConfig) -> str:
     """Lists APMC mandis in farmer's district for a given crop.
     Crop name can be in Hindi/Hinglish — it will be translated automatically."""
-    farmer_id = config.get("configurable", {}).get("farmer_id")
+    cfg = _resolve_config(config)
+    farmer_id = cfg.get("configurable", {}).get("farmer_id")
+    field_id = cfg.get("configurable", {}).get("field_id")
     crop_en = normalize_crop(crop)
     try:
         conn = await asyncpg.connect(DB_URL)
-        row  = await conn.fetchrow(
-            "SELECT state_name, dist_name FROM farmers WHERE id = $1", farmer_id)
+        state, district = None, None
+        if field_id:
+            try:
+                frow = await conn.fetchrow(
+                    "SELECT state_name, city_name FROM farm_fields WHERE id = $1::uuid",
+                    field_id,
+                )
+                if frow and frow["state_name"] and frow["city_name"]:
+                    state, district = frow["state_name"], frow["city_name"]
+            except Exception:
+                pass
+
+        if not state or not district:
+            row = await conn.fetchrow(
+                "SELECT state_name, dist_name FROM farmers WHERE id = $1::uuid", farmer_id)
+            if row:
+                state, district = row["state_name"], row["dist_name"]
         await conn.close()
     except Exception as e: return f"❌ DB Error: {e}"
 
-    if not row: return "❌ Farmer not found."
-    state, district = row["state_name"], row["dist_name"]
+    if not state or not district: return "❌ Farmer or field location not found."
 
     try:
         with open(MANDI_JSON_PATH, "r", encoding="utf-8") as f:
@@ -175,21 +191,35 @@ async def list_mandis(crop: str, config: RunnableConfig) -> str:
 @tool
 async def fetch_crop_price(mandi_name: str, crop: str, config: RunnableConfig) -> str:
     """Fetches live price for a crop at a specific APMC mandi."""
-    farmer_id = config.get("configurable", {}).get("farmer_id")
+    cfg = _resolve_config(config)
+    farmer_id = cfg.get("configurable", {}).get("farmer_id")
+    field_id = cfg.get("configurable", {}).get("field_id")
     crop_en = normalize_crop(crop)
     try:
         conn = await asyncpg.connect(DB_URL)
-        row  = await conn.fetchrow(
-            "SELECT state_name FROM farmers WHERE id = $1", farmer_id)
+        state = None
+        if field_id:
+            try:
+                frow = await conn.fetchrow("SELECT state_name FROM farm_fields WHERE id = $1::uuid", field_id)
+                if frow and frow["state_name"]:
+                    state = frow["state_name"]
+            except Exception:
+                pass
+
+        if not state:
+            row = await conn.fetchrow(
+                "SELECT state_name FROM farmers WHERE id = $1::uuid", farmer_id)
+            if row:
+                state = row["state_name"]
         await conn.close()
     except Exception as e: return f"❌ DB Error: {e}"
 
-    if not row: return "❌ Farmer not found."
+    if not state: return "❌ Farmer or field location not found."
     clean_name = mandi_name.replace("APMC", "").strip()
     params = {
         "api-key": os.getenv("AGMARKNET_API_KEY"),
         "format": "json",
-        "filters[state]": row["state_name"],
+        "filters[state]": state,
         "filters[market]": clean_name,
         "filters[commodity]": crop_en,
     }
@@ -206,21 +236,42 @@ async def fetch_crop_price(mandi_name: str, crop: str, config: RunnableConfig) -
             f"   Date   : {r['arrival_date']}")
 
 @tool
-async def get_weather(days: Union[int, str] = 3, farmer_id: Annotated[str, InjectedToolArg] = "", config: RunnableConfig = None) -> str:
+async def get_weather(
+    days: Union[int, str] = 3,
+    farmer_id: Annotated[str, InjectedToolArg] = "",
+    field_id: Annotated[str, InjectedToolArg] = "",
+    config: RunnableConfig = None,
+) -> str:
     """Fetches weather forecast for farmer's field for the next N days (1-16). days should be a number like 1, 3, or 7."""
     days = int(days)
-    # farmer_id is injected by call_tool; fall back to config for safety
+    cfg = _resolve_config(config)
     if not farmer_id:
-        cfg = _resolve_config(config)
         farmer_id = cfg.get("configurable", {}).get("farmer_id", "")
+    if not field_id:
+        field_id = cfg.get("configurable", {}).get("field_id", "")
+
     try:
         conn = await asyncpg.connect(DB_URL)
-        row  = await conn.fetchrow(
-            "SELECT field_name, city_name, center_lat, center_lon "
-            "FROM farm_fields WHERE farmer_id = $1 LIMIT 1",
-            farmer_id)
+        row = None
+        if field_id:
+            try:
+                row = await conn.fetchrow(
+                    "SELECT field_name, city_name, center_lat, center_lon "
+                    "FROM farm_fields WHERE id = $1::uuid",
+                    field_id,
+                )
+            except Exception:
+                row = None
+
+        if not row and farmer_id:
+            row = await conn.fetchrow(
+                "SELECT field_name, city_name, center_lat, center_lon "
+                "FROM farm_fields WHERE farmer_id = $1::uuid ORDER BY created_at DESC LIMIT 1",
+                farmer_id,
+            )
         await conn.close()
-    except Exception as e: return f"❌ DB Error: {e}"
+    except Exception as e:
+        return f"❌ DB Error: {e}"
 
     if not row: return "⚠️ Khet registered nahi hai."
     lat, lon = float(row["center_lat"]), float(row["center_lon"])
@@ -248,7 +299,13 @@ async def get_weather(days: Union[int, str] = 3, farmer_id: Annotated[str, Injec
     return "\n".join(lines)
 
 @tool
-async def get_crop_advice(mode: str = "advice", target_crop: str = "", farmer_id: Annotated[str, InjectedToolArg] = "", config: RunnableConfig = None) -> str:
+async def get_crop_advice(
+    mode: str = "advice",
+    target_crop: str = "",
+    farmer_id: Annotated[str, InjectedToolArg] = "",
+    field_id: Annotated[str, InjectedToolArg] = "",
+    config: RunnableConfig = None,
+) -> str:
     """
     mode='score'    → current health score only.
     mode='advice'   → NPK + Irrigation what-if simulation.
@@ -257,21 +314,36 @@ async def get_crop_advice(mode: str = "advice", target_crop: str = "", farmer_id
                       Requires target_crop e.g. target_crop='RICE YIELD (Kg per ha)'
     """
     start_time = time.perf_counter()
-    # farmer_id is injected by call_tool; fall back to config for safety
+    cfg = _resolve_config(config)
     if not farmer_id:
-        cfg = _resolve_config(config)
         farmer_id = cfg.get("configurable", {}).get("farmer_id", "")
+    if not field_id:
+        field_id = cfg.get("configurable", {}).get("field_id", "")
 
     try:
-        conn   = await asyncpg.connect(DB_URL)
-        farm   = await conn.fetchrow("""
-            SELECT ff.id AS field_id, ff.city_name, ff.state_name,
-                   f.state_name AS farmer_state, f.dist_name AS farmer_dist
-            FROM farm_fields ff
-            JOIN farmers f ON f.id = ff.farmer_id
-            WHERE ff.farmer_id = $1
-            ORDER BY ff.created_at DESC LIMIT 1
-        """, farmer_id)
+        conn = await asyncpg.connect(DB_URL)
+        farm = None
+        if field_id:
+            try:
+                farm = await conn.fetchrow("""
+                    SELECT ff.id AS field_id, ff.city_name, ff.state_name,
+                           f.state_name AS farmer_state, f.dist_name AS farmer_dist
+                    FROM farm_fields ff
+                    JOIN farmers f ON f.id = ff.farmer_id
+                    WHERE ff.id = $1::uuid
+                """, field_id)
+            except Exception:
+                farm = None
+
+        if not farm and farmer_id:
+            farm = await conn.fetchrow("""
+                SELECT ff.id AS field_id, ff.city_name, ff.state_name,
+                       f.state_name AS farmer_state, f.dist_name AS farmer_dist
+                FROM farm_fields ff
+                JOIN farmers f ON f.id = ff.farmer_id
+                WHERE ff.farmer_id = $1::uuid
+                ORDER BY ff.created_at DESC LIMIT 1
+            """, farmer_id)
         if not farm:
             await conn.close()
             return "⚠️ Farm not found."

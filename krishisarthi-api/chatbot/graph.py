@@ -7,9 +7,10 @@ from langchain_groq import ChatGroq
 
 from chatbot.tools import list_mandis, fetch_crop_price, get_weather, get_crop_advice
 
-class AgentState(TypedDict):
+class AgentState(TypedDict, total=False):
     messages: Annotated[List[BaseMessage], add_messages]
     farmer_id: str
+    field_id: str
 
 SYSTEM_INSTRUCTIONS = """You are KisanSaathi, a helpful agricultural assistant for Indian farmers.
 Farmer ID: {farmer_id}
@@ -130,17 +131,19 @@ async def call_tool(state: AgentState, config: RunnableConfig) -> dict:
     last_msg = state["messages"][-1]
     results  = []
     farmer_id = state.get("farmer_id", "")
+    field_id = state.get("field_id", "")
     for tc in getattr(last_msg, 'tool_calls', []):
         name, args = tc["name"], dict(tc["args"])  # copy so we don't mutate
         if name == "get_weather" and "days" in args:
             args["days"] = int(args["days"])
 
-        # We pass farmer_id via RunnableConfig AND directly as InjectedToolArg
-        conf = {"configurable": {"farmer_id": farmer_id}}
+        # We pass farmer_id & field_id via RunnableConfig AND directly as InjectedToolArg
+        conf = {"configurable": {"farmer_id": farmer_id, "field_id": field_id}}
 
-        # Inject farmer_id directly for tools that use InjectedToolArg
+        # Inject farmer_id and field_id directly for tools that use InjectedToolArg
         if name in ("get_weather", "get_crop_advice"):
             args["farmer_id"] = farmer_id
+            args["field_id"] = field_id
 
         if   name == "list_mandis":       res = await list_mandis.ainvoke(args, config=conf)
         elif name == "fetch_crop_price":  res = await fetch_crop_price.ainvoke(args, config=conf)

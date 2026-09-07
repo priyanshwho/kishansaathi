@@ -87,7 +87,7 @@ jobs:
 
             echo "🔍 4/4 Performing live smoke healthcheck..."
             for i in $(seq 1 10); do
-              if curl -s -f http://127.0.0.1:8000/docs > /dev/null; then
+              if curl -s -f http://127.0.0.1:8082/docs > /dev/null; then
                 echo "✅ Backend is healthy and responding!"
                 break
               fi

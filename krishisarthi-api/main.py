@@ -872,6 +872,60 @@ async def get_field_agro_snapshot(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# ENDPOINT: DELETE /field/{field_id}  — Delete a registered field
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.delete("/field/{field_id}", tags=["Farm Management"])
+async def delete_field(
+    field_id: str = Path(..., description="UUID of the field to delete"),
+    farmer_id: Optional[str] = Query(None, description="Optional farmer UUID for ownership check"),
+    pool: asyncpg.Pool = Depends(get_pool),
+):
+    """
+    Deletes a registered farm field and cascades cleanup to field_predictions,
+    related chat threads and messages.
+    """
+    async with pool.acquire() as conn:
+        if farmer_id:
+            row = await conn.fetchrow(
+                "SELECT id, field_name FROM farm_fields WHERE id = $1::uuid AND farmer_id = $2::uuid",
+                field_id, farmer_id,
+            )
+        else:
+            row = await conn.fetchrow(
+                "SELECT id, field_name FROM farm_fields WHERE id = $1::uuid",
+                field_id,
+            )
+
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Field '{field_id}' not found.")
+
+        # Clean up related chat_threads (cascades to chat_messages)
+        await conn.execute(
+            "DELETE FROM chat_threads WHERE thread_id LIKE $1",
+            f"%{field_id}%",
+        )
+
+        # Delete the field (cascades to field_predictions)
+        await conn.execute(
+            "DELETE FROM farm_fields WHERE id = $1::uuid",
+            field_id,
+        )
+
+    logger.log_info(
+        "field_deleted",
+        {"field_id": field_id, "field_name": row["field_name"]},
+    )
+
+    return {
+        "deleted": True,
+        "field_id": field_id,
+        "field_name": row["field_name"],
+        "message": f"Field '{row['field_name']}' successfully deleted.",
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ENDPOINT 6: POST /predict  ★ THE MAIN ENGINE ★
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -915,7 +969,8 @@ async def predict(
             """
             SELECT ff.id, ff.farmer_id, ff.polygon_id,
                    ff.center_lat, ff.center_lon,
-                   f.state_name, f.dist_name
+                   ff.city_name, ff.state_name,
+                   f.state_name AS farmer_state, f.dist_name AS farmer_dist
             FROM   farm_fields ff
             JOIN   farmers     f  ON f.id = ff.farmer_id
             WHERE  ff.id = $1
@@ -925,8 +980,8 @@ async def predict(
     if not field:
         raise HTTPException(status_code=404, detail=f"field_id '{field_id}' not found.")
 
-    state_name  = field["state_name"]
-    dist_name   = field["dist_name"]
+    state_name  = (field["state_name"] or field["farmer_state"] or "").strip()
+    dist_name   = (field["city_name"] or field["farmer_dist"] or "").strip()
     polygon_id  = field["polygon_id"]
     farmer_id   = str(field["farmer_id"])
 
@@ -1558,6 +1613,11 @@ class ChatRequest(BaseModel):
         ),
         json_schema_extra={"example": "thread-abc-123"},
     )
+    field_id: Optional[str] = Field(
+        default=None,
+        description="UUID of the active farm field for location-specific queries e.g. weather and advice",
+        json_schema_extra={"example": "b2c3d4e5-f6a7-8901-bcde-f12345678901"},
+    )
     history: list[dict] = Field(
         default=[],
         description="(Legacy — ignored; history is loaded from DB via thread_id)",
@@ -1590,17 +1650,24 @@ async def chat(req: ChatRequest):
       Omit it to auto-derive a default thread for this farmer.
     """
     thread_id = req.thread_id or f"thread-{req.farmer_id}"
+    field_id = req.field_id
+    if not field_id and req.thread_id and req.thread_id.startswith(f"thread-{req.farmer_id}-"):
+        candidate = req.thread_id[len(f"thread-{req.farmer_id}-"):]
+        if candidate:
+            field_id = candidate
+
     try:
         reply = await run_agent(
             farmer_id=req.farmer_id,
             message=req.message,
             thread_id=thread_id,
+            field_id=field_id,
         )
     except Exception as exc:
         logger.log_error(
             "chat_endpoint_error",
             exc,
-            context={"farmer_id": req.farmer_id, "thread_id": thread_id}
+            context={"farmer_id": req.farmer_id, "thread_id": thread_id, "field_id": field_id}
         )
         raise HTTPException(
             status_code=500,
@@ -1626,6 +1693,11 @@ async def chat_stream(req: ChatRequest):
     Thread persistence same as /chat — provide thread_id or default is used.
     """
     thread_id = req.thread_id or f"thread-{req.farmer_id}"
+    field_id = req.field_id
+    if not field_id and req.thread_id and req.thread_id.startswith(f"thread-{req.farmer_id}-"):
+        candidate = req.thread_id[len(f"thread-{req.farmer_id}-"):]
+        if candidate:
+            field_id = candidate
 
     async def token_generator():
         try:
@@ -1633,6 +1705,7 @@ async def chat_stream(req: ChatRequest):
                 farmer_id=req.farmer_id,
                 message=req.message,
                 thread_id=thread_id,
+                field_id=field_id,
             ):
                 if chunk:
                     yield chunk
@@ -1640,7 +1713,7 @@ async def chat_stream(req: ChatRequest):
             logger.log_error(
                 "streaming_chat_error",
                 exc,
-                context={"farmer_id": req.farmer_id}
+                context={"farmer_id": req.farmer_id, "thread_id": thread_id, "field_id": field_id}
             )
             yield f"\n[Error: {type(exc).__name__} — {exc}]"
 
@@ -1725,22 +1798,35 @@ async def get_apmc_master():
 async def get_apmc_prices(
     farmer_id: str = Query(..., description="Farmer UUID"),
     commodity: str = Query(..., description="Crop/commodity name e.g. Wheat"),
+    field_id: Optional[str] = Query(None, description="Optional active field UUID"),
     pool: asyncpg.Pool = Depends(get_pool),
 ):
     """
     Fetches live APMC prices for a commodity across all mandis in the
-    farmer's registered district.  Uses the Agmarknet data.gov.in API.
+    farmer's or active field's district. Uses the Agmarknet data.gov.in API.
     """
     async with pool.acquire() as conn:
-        farmer = await conn.fetchrow(
-            "SELECT state_name, dist_name FROM farmers WHERE id = $1",
-            farmer_id,
-        )
-    if not farmer:
-        raise HTTPException(status_code=404, detail=f"Farmer '{farmer_id}' not found.")
+        state_name, dist_name = None, None
+        if field_id:
+            try:
+                frow = await conn.fetchrow(
+                    "SELECT state_name, city_name FROM farm_fields WHERE id = $1::uuid",
+                    field_id,
+                )
+                if frow and frow["state_name"] and frow["city_name"]:
+                    state_name, dist_name = frow["state_name"], frow["city_name"]
+            except Exception:
+                pass
 
-    state_name = (farmer["state_name"] or "").strip()
-    dist_name  = (farmer["dist_name"] or "").strip()
+        if not state_name or not dist_name:
+            farmer = await conn.fetchrow(
+                "SELECT state_name, dist_name FROM farmers WHERE id = $1",
+                farmer_id,
+            )
+            if not farmer:
+                raise HTTPException(status_code=404, detail=f"Farmer '{farmer_id}' not found.")
+            state_name = (farmer["state_name"] or "").strip()
+            dist_name  = (farmer["dist_name"] or "").strip()
 
     try:
         master = _load_mandi_master()
