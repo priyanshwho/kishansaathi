@@ -6,6 +6,7 @@ import { streamChat } from '../../../services/apiClient'
 import { getLocalizedApiError } from '../../../services/apiErrors'
 import { useLanguage } from '../../../context/LanguageContext'
 import { useSession } from '../../../context/SessionContext'
+import { useFields } from '../../../context/FieldContext'
 import { useToast } from '../../../context/ToastContext'
 
 type ChatMessage = {
@@ -178,6 +179,7 @@ const AiAssistantPanel = () => {
   const t = panel.panel.aiAssistant
   const { pushToast } = useToast()
   const { farmerId, fieldId } = useSession()
+  const { selectedField } = useFields()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -216,7 +218,7 @@ const AiAssistantPanel = () => {
     setStreaming(true)
 
     try {
-      await streamChat(farmerId, message, threadId, (token) => {
+      await streamChat(farmerId, message, threadId, fieldId, (token) => {
         setMessages((prev) => {
           const next = [...prev]
           const last = next.length - 1

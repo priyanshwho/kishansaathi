@@ -8,7 +8,8 @@ type FieldContextValue = {
   selectedField: FarmerFieldItem | null
   loading: boolean
   selectField: (fieldId: string) => void
-  refreshFields: () => void
+  refreshFields: () => Promise<void>
+  deleteField: (fieldId: string) => Promise<boolean>
 }
 
 const FieldContext = createContext<FieldContextValue | undefined>(undefined)
@@ -26,17 +27,23 @@ export const FieldProvider = ({ children }: { children: ReactNode }) => {
     setLoading(true)
     try {
       const payload = await apiClient.getFarmerFields(farmerId)
-      setFields(payload.fields ?? [])
-      // Auto-select first field if none selected
-      if (!fieldId && payload.fields.length > 0) {
-        setFieldId(payload.fields[0].field_id)
+      const fetched = payload.fields ?? []
+      setFields(fetched)
+      // Auto-select first field if currently selected field is invalid or empty
+      if (fetched.length > 0) {
+        const exists = fetched.some((f) => f.field_id === fieldId)
+        if (!exists) {
+          setFieldId(fetched[0].field_id)
+        }
+      } else {
+        setFieldId('')
       }
     } catch {
       setFields([])
     } finally {
       setLoading(false)
     }
-  }, [farmerId, fieldId, setFieldId])
+  }, [farmerId, setFieldId])
 
   useEffect(() => {
     loadFields()
@@ -54,9 +61,36 @@ export const FieldProvider = ({ children }: { children: ReactNode }) => {
     [setFieldId],
   )
 
+  const deleteField = useCallback(
+    async (idToDelete: string): Promise<boolean> => {
+      try {
+        await apiClient.deleteField(idToDelete, farmerId)
+        const remaining = fields.filter((f) => f.field_id !== idToDelete)
+        setFields(remaining)
+
+        if (fieldId === idToDelete) {
+          const nextFieldId = remaining.length > 0 ? remaining[0].field_id : ''
+          setFieldId(nextFieldId)
+        }
+        return true
+      } catch (err) {
+        console.error('Failed to delete field:', err)
+        throw err
+      }
+    },
+    [farmerId, fieldId, fields, setFieldId],
+  )
+
   const value = useMemo(
-    () => ({ fields, selectedField, loading, selectField, refreshFields: loadFields }),
-    [fields, selectedField, loading, selectField, loadFields],
+    () => ({
+      fields,
+      selectedField,
+      loading,
+      selectField,
+      refreshFields: loadFields,
+      deleteField,
+    }),
+    [fields, selectedField, loading, selectField, loadFields, deleteField],
   )
 
   return <FieldContext.Provider value={value}>{children}</FieldContext.Provider>

@@ -113,10 +113,17 @@ export const apiClient = {
       body: JSON.stringify(payload),
     })
   },
+  deleteField: (fieldId: string, farmerId?: string) => {
+    const query = farmerId ? `?farmer_id=${encodeURIComponent(farmerId)}` : ''
+    return request<{ deleted: boolean; field_id: string; message?: string }>(`/field/${fieldId}${query}`, {
+      method: 'DELETE',
+    })
+  },
   // ── APMC Market endpoints ──────────────────────────────────────────────
   getApmcMaster: () => request<ApmcMasterResponse>('/apmc/master'),
-  getApmcPrices: (farmerId: string, commodity: string) => {
+  getApmcPrices: (farmerId: string, commodity: string, fieldId?: string) => {
     const query = new URLSearchParams({ farmer_id: farmerId, commodity })
+    if (fieldId) query.set('field_id', fieldId)
     return request<ApmcPricesResponse>(`/apmc/prices?${query.toString()}`)
   },
 }
@@ -125,7 +132,8 @@ export const streamChat = async (
   farmerId: string,
   message: string,
   threadId: string,
-  onToken: (token: string) => void,
+  fieldId?: string,
+  onToken?: (token: string) => void,
 ) => {
   const response = await fetch(`${apiBaseUrl}/chat/stream`, {
     method: 'POST',
@@ -136,6 +144,7 @@ export const streamChat = async (
       farmer_id: farmerId,
       message,
       thread_id: threadId,
+      field_id: fieldId || undefined,
     }),
   })
 
@@ -160,7 +169,7 @@ export const streamChat = async (
     if (result.value) {
       const chunk = decoder.decode(result.value, { stream: true })
       if (chunk) {
-        onToken(chunk)
+        onToken?.(chunk)
       }
     }
   }
