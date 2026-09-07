@@ -65,18 +65,23 @@ export const FieldProvider = ({ children }: { children: ReactNode }) => {
     async (idToDelete: string): Promise<boolean> => {
       try {
         await apiClient.deleteField(idToDelete, farmerId)
-        const remaining = fields.filter((f) => f.field_id !== idToDelete)
-        setFields(remaining)
-
-        if (fieldId === idToDelete) {
-          const nextFieldId = remaining.length > 0 ? remaining[0].field_id : ''
-          setFieldId(nextFieldId)
+      } catch (err: unknown) {
+        // If the field was already deleted from DB (404), continue with local cleanup
+        const is404 = err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 404
+        if (!is404) {
+          console.error('Failed to delete field:', err)
+          throw err
         }
-        return true
-      } catch (err) {
-        console.error('Failed to delete field:', err)
-        throw err
       }
+
+      const remaining = fields.filter((f) => f.field_id !== idToDelete)
+      setFields(remaining)
+
+      if (fieldId === idToDelete) {
+        const nextFieldId = remaining.length > 0 ? remaining[0].field_id : ''
+        setFieldId(nextFieldId)
+      }
+      return true
     },
     [farmerId, fieldId, fields, setFieldId],
   )

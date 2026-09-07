@@ -912,9 +912,12 @@ async def delete_field(
             field_id,
         )
 
-    logger.log_info(
+    logger.log_db_operation(
         "field_deleted",
         {"field_id": field_id, "field_name": row["field_name"]},
+        operation="DELETE",
+        table="farm_fields",
+        rows_affected=1,
     )
 
     return {
