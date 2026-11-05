@@ -156,7 +156,7 @@ button.btn:hover{background:#3a8a3a}
 </div>
 
 <script>
-const API = window.location.origin;
+const API = window.location.origin; // Caddy serves the UI and proxies API routes on this origin.
 let streaming = false;
 
 function show(id) {
